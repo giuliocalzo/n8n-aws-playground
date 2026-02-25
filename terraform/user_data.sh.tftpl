@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+
+# Fetch DB password from SSM Parameter Store
+DB_PASSWORD=$(aws ssm get-parameter \
+  --name "${db_password_ssm_param}" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text \
+  --region "${aws_region}")
+
+# Install Docker
+dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# Write n8n env file (readable only by root)
+cat > /etc/n8n.env <<EOF
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=${db_host}
+DB_POSTGRESDB_PORT=${db_port}
+DB_POSTGRESDB_DATABASE=${db_name}
+DB_POSTGRESDB_USER=${db_user}
+DB_POSTGRESDB_PASSWORD=$DB_PASSWORD
+DB_POSTGRESDB_SSL_ENABLED=true
+DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false
+N8N_DIAGNOSTICS_ENABLED=true
+N8N_LOG_LEVEL=debug
+N8N_LOG_OUTPUT=console
+EOF
+chmod 600 /etc/n8n.env
+
+mkdir -p /opt/n8n/data
+chown -R 1000:1000 /opt/n8n/data
+
+# Run n8n as a Docker container with systemd management
+cat > /etc/systemd/system/n8n.service <<'UNIT'
+[Unit]
+Description=n8n workflow automation
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+RestartSec=10
+EnvironmentFile=/etc/n8n.env
+ExecStartPre=-/usr/bin/docker stop n8n
+ExecStartPre=-/usr/bin/docker rm n8n
+ExecStart=/usr/bin/docker run --name n8n \
+  --restart=unless-stopped \
+  -p 5678:5678 \
+  --env-file /etc/n8n.env \
+  -v /opt/n8n/data:/home/node/.n8n \
+  n8nio/n8n:${n8n_version}
+ExecStop=/usr/bin/docker stop n8n
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now n8n
