@@ -66,7 +66,7 @@ resource "aws_instance" "n8n" {
   key_name               = var.ec2_key_name
 
   root_block_device {
-    volume_size = var.disk_size
+    volume_size = var.ec2_root_volume_size
     volume_type = "gp3"
     encrypted   = true
   }
