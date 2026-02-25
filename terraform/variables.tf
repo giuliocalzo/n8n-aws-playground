@@ -22,6 +22,12 @@ variable "ec2_instance_type" {
   default     = "t3.small"
 }
 
+variable "ec2_root_volume_size" {
+  description = "Size in GB of the EC2 root volume"
+  type        = number
+  default     = 100
+}
+
 variable "ec2_key_name" {
   description = "Name of an existing EC2 key pair for SSH access (optional)"
   type        = string

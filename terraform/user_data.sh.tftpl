@@ -9,6 +9,13 @@ DB_PASSWORD=$(aws ssm get-parameter \
   --output text \
   --region "${aws_region}")
 
+N8N_ENCRYPTION_KEY=$(aws ssm get-parameter \
+  --name "${n8n_encryption_key_ssm_param}" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text \
+  --region "${aws_region}")
+
 # Install Docker
 dnf install -y docker
 systemctl enable --now docker
@@ -22,11 +29,15 @@ DB_POSTGRESDB_PORT=${db_port}
 DB_POSTGRESDB_DATABASE=${db_name}
 DB_POSTGRESDB_USER=${db_user}
 DB_POSTGRESDB_PASSWORD=$DB_PASSWORD
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
 DB_POSTGRESDB_SSL_ENABLED=true
 DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=false
 N8N_DIAGNOSTICS_ENABLED=true
 N8N_LOG_LEVEL=debug
 N8N_LOG_OUTPUT=console
+# https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/
+WEBHOOK_URL=https://${alb_dns_name}/
+N8N_PROXY_HOPS=1
 EOF
 chmod 600 /etc/n8n.env
 

@@ -33,6 +33,8 @@ Internet
 | EC2 | `aws_instance` | Runs n8n via Docker in a private subnet |
 | RDS | `terraform-aws-modules/rds/aws` ~> 7.0 | PostgreSQL database in database subnets |
 | TLS/ACM | `tls_self_signed_cert` + `aws_acm_certificate` | Self-signed TLS certificate imported into ACM |
+| SSM | `aws_ssm_parameter` | Stores DB password and n8n encryption key as SecureString |
+| GitHub | `github_ip_ranges` data source | Dynamically allows GitHub webhook IPs on the ALB |
 
 ## Prerequisites
 
@@ -47,7 +49,7 @@ cd terraform
 
 # Copy and edit the variables file
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars to your liking (DB password is auto-generated)
+# Edit terraform.tfvars to your liking
 
 terraform init
 terraform plan
@@ -77,14 +79,23 @@ The ALB is configured with a self-signed TLS certificate. HTTP traffic on port 8
 
 To use a trusted certificate, replace the `certificate_arn` in `alb.tf` with your own ACM certificate ARN.
 
+## Security
+
+- **Secrets**: DB password and `N8N_ENCRYPTION_KEY` are auto-generated, stored in SSM Parameter Store as `SecureString`, and fetched by the EC2 instance at boot via IAM role
+- **ALB access**: Restricted to CIDRs in `allowed_cidr_blocks` plus GitHub webhook IP ranges (fetched dynamically)
+- **DB connection**: SSL enabled between n8n and RDS
+- **EC2 access**: No public IP; reachable via SSM Session Manager only
+- **Storage**: EBS root volume and RDS storage are encrypted at rest
+
 ## Variables
 
 | Name | Description | Default |
 |------|-------------|---------|
-| `aws_region` | AWS region | `eu-west-1` |
+| `aws_region` | AWS region | `eu-central-1` |
 | `project_name` | Name prefix for resources | `n8n` |
 | `vpc_cidr` | VPC CIDR block | `10.0.0.0/16` |
 | `ec2_instance_type` | EC2 instance type | `t3.small` |
+| `ec2_root_volume_size` | EC2 root volume size in GB | `30` |
 | `ec2_key_name` | EC2 key pair name (optional) | `null` |
 | `db_instance_class` | RDS instance class | `db.t4g.micro` |
 | `db_name` | PostgreSQL database name | `n8n` |
@@ -93,6 +104,17 @@ To use a trusted certificate, replace the `certificate_arn` in `alb.tf` with you
 | `n8n_version` | n8n Docker image tag | `latest` |
 | `allowed_cidr_blocks` | CIDRs allowed to reach ALB | `["0.0.0.0/0"]` |
 | `tags` | Additional resource tags | `{}` |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `n8n_url` | URL to access n8n |
+| `alb_dns_name` | DNS name of the ALB |
+| `ec2_instance_id` | EC2 instance ID |
+| `rds_endpoint` | RDS instance endpoint |
+| `vpc_id` | VPC ID |
+| `db_password_ssm_parameter` | SSM path for the DB password |
 
 ## Cleanup
 

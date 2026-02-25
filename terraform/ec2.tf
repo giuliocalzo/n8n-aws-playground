@@ -30,7 +30,10 @@ resource "aws_iam_role_policy" "read_ssm_params" {
         "ssm:GetParameter",
         "ssm:GetParameters"
       ]
-      Resource = aws_ssm_parameter.db_password.arn
+      Resource = [
+        aws_ssm_parameter.db_password.arn,
+        aws_ssm_parameter.n8n_encryption_key.arn,
+      ]
     }]
   })
 }
@@ -39,6 +42,20 @@ resource "aws_iam_instance_profile" "n8n" {
   name_prefix = "${var.project_name}-"
   role        = aws_iam_role.n8n.name
 }
+
+resource "random_password" "n8n_encryption_key" {
+  length  = 64
+  special = false
+}
+
+resource "aws_ssm_parameter" "n8n_encryption_key" {
+  name  = "/${var.project_name}/n8n/encryption-key"
+  type  = "SecureString"
+  value = random_password.n8n_encryption_key.result
+
+  tags = local.tags
+}
+
 
 resource "aws_instance" "n8n" {
   ami                    = data.aws_ssm_parameter.al2023.value
@@ -49,19 +66,21 @@ resource "aws_instance" "n8n" {
   key_name               = var.ec2_key_name
 
   root_block_device {
-    volume_size = 30
+    volume_size = var.disk_size
     volume_type = "gp3"
     encrypted   = true
   }
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     aws_region            = var.aws_region
+    alb_dns_name          = module.alb.dns_name
     db_host               = module.db.db_instance_address
     db_port               = module.db.db_instance_port
     db_name               = var.db_name
     db_user               = var.db_username
-    db_password_ssm_param = aws_ssm_parameter.db_password.name
-    n8n_version           = var.n8n_version
+    db_password_ssm_param      = aws_ssm_parameter.db_password.name
+    n8n_encryption_key_ssm_param = aws_ssm_parameter.n8n_encryption_key.name
+    n8n_version                = var.n8n_version
   })
 
   tags = merge(local.tags, { Name = "${var.project_name}-server" })
